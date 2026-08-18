@@ -2,6 +2,7 @@ import {
   Agent,
   GeminiChat,
   type ConfirmFn,
+  type ModelRouter,
   type ToolCall,
   type ToolRegistry,
 } from '@mini-gemini/core';
@@ -9,7 +10,7 @@ import { Box, Text, useInput } from 'ink';
 import { useCallback, useMemo, useState } from 'react';
 
 interface Message {
-  role: 'user' | 'model' | 'tool' | 'error';
+  role: 'user' | 'model' | 'tool' | 'info' | 'error';
   text: string;
 }
 
@@ -21,17 +22,19 @@ interface PendingApproval {
 export function App({
   apiKey,
   registry,
+  router,
 }: {
   apiKey: string;
   registry: ToolRegistry;
+  router: ModelRouter;
 }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState('');
   const [pending, setPending] = useState<PendingApproval | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // Approval bridge: the agent loop awaits this promise; the y/n
-  // keypress below resolves it.
+  // 审批桥接：Agent 循环等待这个 promise；下面的 y/n
+  // 按键会将其 resolve。
   const confirm: ConfirmFn = useCallback(
     (call) =>
       new Promise<boolean>((resolve) => {
@@ -40,12 +43,12 @@ export function App({
     [],
   );
 
-  // One Agent for the whole session — its GeminiChat keeps the
-  // conversation history, so follow-up questions have context.
+  // 整个会话只用一个 Agent —— 它的 GeminiChat 保存着对话
+  // 历史，所以后续追问是有上下文的。
   const agent = useMemo(() => {
-    const chat = new GeminiChat(apiKey, registry);
+    const chat = new GeminiChat(apiKey, registry, router);
     return new Agent(chat, registry, confirm);
-  }, [apiKey, registry, confirm]);
+  }, [apiKey, registry, router, confirm]);
 
   const submit = useCallback(
     async (prompt: string) => {
@@ -54,7 +57,7 @@ export function App({
       try {
         for await (const event of agent.run(prompt)) {
           if (event.type === 'text') {
-            // Stream: extend the last model message, or start one.
+            // 流式输出：追加到最后一条模型消息，或新建一条。
             setMessages((m) => {
               const last = m[m.length - 1];
               if (last?.role === 'model') {
@@ -65,6 +68,14 @@ export function App({
               }
               return [...m, { role: 'model', text: event.text }];
             });
+          } else if (event.type === 'routing') {
+            setMessages((m) => [
+              ...m,
+              {
+                role: 'info',
+                text: `model: ${event.decision.model} (${event.decision.source}: ${event.decision.reason})`,
+              },
+            ]);
           } else if (event.type === 'tool_result') {
             const summary = event.output.split('\n')[0];
             setMessages((m) => [
@@ -89,7 +100,7 @@ export function App({
   );
 
   useInput((input, key) => {
-    // Approval mode: only y/n matter.
+    // 审批模式：只有 y/n 有意义。
     if (pending) {
       if (input.toLowerCase() === 'y') {
         pending.resolve(true);
@@ -124,7 +135,12 @@ export function App({
       <Text dimColor>Type a message and press Enter. Ctrl+C to quit.</Text>
       <Box flexDirection="column" marginTop={1}>
         {messages.map((message, index) => (
-          <Box key={index} marginBottom={message.role === 'tool' ? 0 : 1}>
+          <Box
+            key={index}
+            marginBottom={
+              message.role === 'tool' || message.role === 'info' ? 0 : 1
+            }
+          >
             {message.role === 'user' && (
               <Text color="green">{'> '}{message.text}</Text>
             )}
@@ -132,6 +148,7 @@ export function App({
             {message.role === 'tool' && (
               <Text color="yellow">{message.text}</Text>
             )}
+            {message.role === 'info' && <Text dimColor>{message.text}</Text>}
             {message.role === 'error' && (
               <Text color="red">Error: {message.text}</Text>
             )}

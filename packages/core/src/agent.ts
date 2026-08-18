@@ -1,22 +1,21 @@
 import type { GeminiChat, ToolCall, ToolResponse } from './chat.js';
+import type { RoutingDecision } from './routing/router.js';
 import type { ToolRegistry } from './tools/registry.js';
 
 export type AgentEvent =
   | { type: 'text'; text: string }
   | { type: 'tool_call'; call: ToolCall }
-  | { type: 'tool_result'; name: string; output: string; skipped: boolean };
+  | { type: 'tool_result'; name: string; output: string; skipped: boolean }
+  | { type: 'routing'; decision: RoutingDecision };
 
 /**
- * Asks the user whether a requested tool call may run.
- * The UI (readline today, Ink in Chapter 5) supplies this.
+ * 询问用户是否允许运行某次被请求的工具调用。
  */
 export type ConfirmFn = (call: ToolCall) => Promise<boolean>;
 
 /**
- * The agent loop: send a message, execute any requested tools (with
- * approval), feed results back, repeat until the model answers with
- * text only. Mirrors the turn loop + CoreToolScheduler in the real
- * project's packages/core/src/core and src/scheduler.
+ * 代理循环：发送消息，执行被请求的工具（需批准），把结果
+ * 反馈回去，重复此过程，直到模型只用文本作答。
  */
 export class Agent {
   constructor(
@@ -33,13 +32,14 @@ export class Agent {
       for await (const event of this.chat.sendMessageStream(next)) {
         if (event.type === 'text') {
           yield { type: 'text', text: event.text };
+        } else if (event.type === 'routing') {
+          yield { type: 'routing', decision: event.decision };
         } else {
           calls.push(event.call);
           yield { type: 'tool_call', call: event.call };
         }
       }
 
-      // No tool requests → the model is done with this task.
       if (calls.length === 0) {
         return;
       }

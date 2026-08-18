@@ -1,10 +1,16 @@
 import { createInterface } from 'node:readline/promises';
-import { Agent, GeminiChat, type ToolCall } from '@mini-gemini/core';
+import {
+  Agent,
+  createDefaultRouter,
+  GeminiChat,
+  type ToolCall,
+} from '@mini-gemini/core';
 import { buildRegistry } from './tools.js';
 
 export async function runNonInteractive(
   prompt: string,
   apiKey: string,
+  modelOverride?: string,
 ): Promise<void> {
   const registry = await buildRegistry();
   const rl = createInterface({
@@ -18,13 +24,19 @@ export async function runNonInteractive(
     return answer.trim().toLowerCase() === 'y';
   };
 
-  const chat = new GeminiChat(apiKey, registry);
+  const router = createDefaultRouter(modelOverride);
+  const chat = new GeminiChat(apiKey, registry, router);
   const agent = new Agent(chat, registry, confirm);
 
   for await (const event of agent.run(prompt)) {
     switch (event.type) {
       case 'text':
         process.stdout.write(event.text);
+        break;
+      case 'routing':
+        console.log(
+          `[router] ${event.decision.model} — ${event.decision.source}: ${event.decision.reason}`,
+        );
         break;
       case 'tool_call':
         break;

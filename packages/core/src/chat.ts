@@ -1,53 +1,68 @@
 import OpenAI from 'openai';
+import type { ModelRouter, RoutingDecision } from './routing/router.js';
+import { createDefaultRouter, FAST_MODEL } from './routing/strategies.js';
 import type { ToolRegistry } from './tools/registry.js';
 
-export const DEFAULT_MODEL = 'gpt-4o-mini';
+export const DEFAULT_MODEL = FAST_MODEL;
 
-/** One entry in the conversation, in the OpenAI wire format. */
+/** 对话中的一条记录，采用 OpenAI 的传输格式。 */
 export type ChatMessage = OpenAI.ChatCompletionMessageParam;
 
-/** A tool call the model asked for, with arguments already parsed. */
+/** 模型请求的一次工具调用，参数已完成解析。 */
 export interface ToolCall {
-  /** The API's id for this call — the tool result must quote it back. */
+  /** API 为这次调用分配的 id——工具结果必须原样带回它。 */
   id: string;
   name: string;
   args: Record<string, unknown>;
 }
 
-/** The outcome of one executed (or refused) tool call. */
+/** 一次工具调用被执行（或被拒绝）后的结果。 */
 export interface ToolResponse {
   toolCallId: string;
   output: string;
 }
 
-/** One streamed event: a text fragment or a tool-call request. */
+/** 一个流式事件：文本、一次工具调用请求，或一次路由决定。 */
 export type ChatEvent =
   | { type: 'text'; text: string }
-  | { type: 'tool_request'; call: ToolCall };
+  | { type: 'tool_request'; call: ToolCall }
+  | { type: 'routing'; decision: RoutingDecision };
 
 /**
- * Owns a conversation with the OpenAI API: keeps the history of turns
- * and streams each model response.
+ * 负责与 OpenAI API 的一次对话：保存各轮次的历史记录，
+ * 通过路由器为每条用户消息挑选模型，并流式输出响应。
  */
 export class GeminiChat {
   private readonly client: OpenAI;
   private readonly history: ChatMessage[] = [];
+  private currentModel: string = DEFAULT_MODEL;
 
   constructor(
     apiKey: string,
     private readonly registry?: ToolRegistry,
-    private readonly model: string = DEFAULT_MODEL,
+    private readonly router: ModelRouter = createDefaultRouter(),
   ) {
     this.client = new OpenAI({ apiKey });
   }
 
   /**
-   * Sends one turn — either a user text message or a batch of tool
-   * results — and yields the model's reply as a stream of events.
+   * 发送一个轮次——可以是用户文本消息，也可以是一批工具
+   * 结果——并以事件流的形式产出模型的回复。
    */
   async *sendMessageStream(
     message: string | ToolResponse[],
   ): AsyncGenerator<ChatEvent> {
+    // 只在全新的用户消息上路由；工具结果轮次继续沿用
+    // 开启该任务的那个模型。
+    if (typeof message === 'string') {
+      const decision = await this.router.route({
+        prompt: message,
+        historyLength: this.history.length,
+      });
+      this.currentModel = decision.model;
+      yield { type: 'routing', decision };
+    }
+
     if (typeof message === 'string') {
       this.history.push({ role: 'user', content: message });
     } else {
@@ -62,15 +77,13 @@ export class GeminiChat {
 
     const tools = this.registry?.getToolSchemas() ?? [];
     const stream = await this.client.chat.completions.create({
-      model: this.model,
+      model: this.currentModel,
       messages: this.history,
       stream: true,
       ...(tools.length > 0 ? { tools } : {}),
     });
 
     let fullText = '';
-    // Tool calls stream in fragments, keyed by their position in the
-    // response; we reassemble them here.
     const partial = new Map<
       number,
       { id: string; name: string; args: string }
@@ -112,16 +125,11 @@ export class GeminiChat {
           ? (JSON.parse(entry.args) as Record<string, unknown>)
           : {};
       } catch {
-        // Malformed JSON is rare but possible; an empty object still
-        // lets the tool report a useful error back to the model.
         args = {};
       }
       calls.push({ id: entry.id, name: entry.name, args });
     }
 
-    // Record the model turn faithfully — including its tool_calls. If
-    // we dropped them, the model would see a history where it never
-    // asked for the tool, and the conversation would derail.
     this.history.push({
       role: 'assistant',
       content: fullText || null,
