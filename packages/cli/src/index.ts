@@ -1,4 +1,10 @@
-import { GeminiChat } from '@mini-gemini/core';
+import {
+  GeminiChat,
+  ToolRegistry,
+  readFileTool,
+  runShellTool,
+  writeFileTool,
+} from '@mini-gemini/core';
 
 const prompt = process.argv.slice(2).join(' ');
 if (!prompt) {
@@ -14,8 +20,20 @@ if (!apiKey) {
   process.exit(1);
 }
 
-const chat = new GeminiChat(apiKey);
-for await (const text of chat.sendMessageStream(prompt)) {
-  process.stdout.write(text);
+const registry = new ToolRegistry();
+registry.register(readFileTool);
+registry.register(writeFileTool);
+registry.register(runShellTool);
+
+const chat = new GeminiChat(apiKey, registry);
+for await (const event of chat.sendMessageStream(prompt)) {
+  if (event.type === 'text') {
+    process.stdout.write(event.text);
+  } else {
+    console.log(
+      `\n[tool request] ${event.call.name}(${JSON.stringify(event.call.args)})` +
+        ' — not executed yet (that is Chapter 4!)',
+    );
+  }
 }
 process.stdout.write('\n');
