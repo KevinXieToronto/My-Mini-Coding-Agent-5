@@ -1,0 +1,25 @@
+{
+  "name": "mini-gemini",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @mini-gemini/core && npm run build -w @mini-gemini/cli",
+    "bundle": "node scripts/bundle.js",
+    "start": "npm run build && node packages/cli/dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/node": "20.17.6",
+    "esbuild": "0.25.5",
+    "typescript": "5.8.3",
+    "vitest": "3.2.4"
+  }
+}

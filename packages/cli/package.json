@@ -1,0 +1,14 @@
+{
+  "name": "@mini-gemini/cli",
+  "version": "1.0.0",
+  "type": "module",
+  "bin": {
+    "mini-gemini": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@mini-gemini/core": "*"
+  }
+}
