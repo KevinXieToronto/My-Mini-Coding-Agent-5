@@ -9,6 +9,11 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@mini-gemini/core": "*"
+    "@mini-gemini/core": "*",
+    "ink": "^6.0.0",
+    "react": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.0"
   }
 }
