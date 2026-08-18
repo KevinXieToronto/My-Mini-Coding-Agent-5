@@ -12,5 +12,8 @@
   },
   "scripts": {
     "build": "tsc"
+  },
+  "dependencies": {
+    "openai": "^7.5.0"
   }
 }
