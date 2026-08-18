@@ -6,7 +6,7 @@ export async function runNonInteractive(
   prompt: string,
   apiKey: string,
 ): Promise<void> {
-  const registry = buildRegistry();
+  const registry = await buildRegistry();
   const rl = createInterface({
     input: process.stdin,
     output: process.stdout,

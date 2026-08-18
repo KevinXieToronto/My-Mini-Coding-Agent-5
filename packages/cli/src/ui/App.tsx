@@ -3,10 +3,10 @@ import {
   GeminiChat,
   type ConfirmFn,
   type ToolCall,
+  type ToolRegistry,
 } from '@mini-gemini/core';
 import { Box, Text, useInput } from 'ink';
 import { useCallback, useMemo, useState } from 'react';
-import { buildRegistry } from '../tools.js';
 
 interface Message {
   role: 'user' | 'model' | 'tool' | 'error';
@@ -18,15 +18,20 @@ interface PendingApproval {
   resolve: (approved: boolean) => void;
 }
 
-export function App({ apiKey }: { apiKey: string }) {
+export function App({
+  apiKey,
+  registry,
+}: {
+  apiKey: string;
+  registry: ToolRegistry;
+}) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState('');
   const [pending, setPending] = useState<PendingApproval | null>(null);
   const [busy, setBusy] = useState(false);
 
   // Approval bridge: the agent loop awaits this promise; the y/n
-  // keypress below resolves it. This is how an imperative async loop
-  // and a declarative UI meet.
+  // keypress below resolves it.
   const confirm: ConfirmFn = useCallback(
     (call) =>
       new Promise<boolean>((resolve) => {
@@ -38,10 +43,9 @@ export function App({ apiKey }: { apiKey: string }) {
   // One Agent for the whole session — its GeminiChat keeps the
   // conversation history, so follow-up questions have context.
   const agent = useMemo(() => {
-    const registry = buildRegistry();
     const chat = new GeminiChat(apiKey, registry);
     return new Agent(chat, registry, confirm);
-  }, [apiKey, confirm]);
+  }, [apiKey, registry, confirm]);
 
   const submit = useCallback(
     async (prompt: string) => {

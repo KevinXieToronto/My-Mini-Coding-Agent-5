@@ -15,3 +15,6 @@ if (args.length > 0) {
   const { runInteractive } = await import('./interactive.js');
   await runInteractive(apiKey);
 }
+
+const { shutdownMcp } = await import('./tools.js');
+await shutdownMcp();

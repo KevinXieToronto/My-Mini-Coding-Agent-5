@@ -7,6 +7,7 @@ export {
   type ToolCall,
   type ToolResponse,
 } from './chat.js';
+export { connectMcpServer, type McpServerConfig } from './mcp/client.js';
 export { type Tool, type ToolResult } from './tools/tool.js';
 export { ToolRegistry } from './tools/registry.js';
 export { readFileTool } from './tools/read-file.js';

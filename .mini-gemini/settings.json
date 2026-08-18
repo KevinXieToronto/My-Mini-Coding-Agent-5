@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "dice": {
+      "command": "node",
+      "args": ["mcp-server/server.mjs"]
+    }
+  }
+}
