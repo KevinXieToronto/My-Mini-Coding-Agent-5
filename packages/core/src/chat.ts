@@ -14,6 +14,12 @@ export interface ToolCall {
   args: Record<string, unknown>;
 }
 
+/** The outcome of one executed (or refused) tool call. */
+export interface ToolResponse {
+  toolCallId: string;
+  output: string;
+}
+
 /** One streamed event: a text fragment or a tool-call request. */
 export type ChatEvent =
   | { type: 'text'; text: string }
@@ -36,11 +42,23 @@ export class GeminiChat {
   }
 
   /**
-   * Sends a user message and yields the model's reply as a stream of
-   * events: text fragments and/or tool-call requests.
+   * Sends one turn — either a user text message or a batch of tool
+   * results — and yields the model's reply as a stream of events.
    */
-  async *sendMessageStream(message: string): AsyncGenerator<ChatEvent> {
-    this.history.push({ role: 'user', content: message });
+  async *sendMessageStream(
+    message: string | ToolResponse[],
+  ): AsyncGenerator<ChatEvent> {
+    if (typeof message === 'string') {
+      this.history.push({ role: 'user', content: message });
+    } else {
+      for (const response of message) {
+        this.history.push({
+          role: 'tool',
+          tool_call_id: response.toolCallId,
+          content: response.output,
+        });
+      }
+    }
 
     const tools = this.registry?.getToolSchemas() ?? [];
     const stream = await this.client.chat.completions.create({
